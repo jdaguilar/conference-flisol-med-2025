@@ -128,7 +128,7 @@ deploy_minio_microk8s() {
 }
 
 create_s3_buckets() {
-    local buckets=("raw" "curated" "analytics" "artifacts" "logs" "dremio" "metastore")
+    local buckets=("raw" "curated" "analytics" "artifacts" "logs" "dremio" "warehouse")
 
     for bucket in "${buckets[@]}"; do
 
@@ -168,8 +168,9 @@ conf:
     javax.jdo.option.ConnectionUserName: admin
     javax.jdo.option.ConnectionPassword: admin
 
-    fs.defaultFS: s3a://metastore
-    fs.s3a.bucket: metastore
+    fs.defaultFS: s3a://warehouse
+    hive.metastore.warehouse.dir: s3a://warehouse
+    # metastore.warehouse.dir: s3a://warehouse
     fs.s3a.connection.ssl.enabled: false
     fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
     fs.s3a.endpoint: http://$AWS_S3_ENDPOINT
@@ -183,6 +184,16 @@ hiveMetastoreDb:
 
 EOF
     sudo microk8s helm upgrade --install my-hive-metastore -n trino -f k8s/hive-metastore/values.yaml k8s/charts/hive-metastore
+    # Wait for the Hive Metastore service to be ready
+    while ! kubectl get service my-hive-metastore -n trino &>/dev/null; do
+        print_info "Waiting for Hive Metastore service to be ready..."
+        sleep 10
+    done
+    # Get the IP address of the Hive Metastore service
+    hive_metastore_ip=$(kubectl get service my-hive-metastore -n trino -o jsonpath='{.spec.clusterIP}')
+    hive_metastore_port=$(kubectl get service my-hive-metastore -n trino -o jsonpath='{.spec.ports[0].port}')
+    export HIVE_METASTORE_URL="$hive_metastore_ip:$hive_metastore_port"
+    echo "Hive Metastore URL: $HIVE_METASTORE_URL"
 }
 
 deploy_redis() {
@@ -197,7 +208,7 @@ deploy_trino() {
 image:
   tag: 372
 
-additionalCatalogs:
+catalogs:
   minio: |
     connector.name=hive-hadoop2
     hive.metastore.uri=thrift://my-hive-metastore:9083
@@ -210,6 +221,17 @@ additionalCatalogs:
     hive.storage-format=ORC
     hive.allow-drop-table=true
     hive.s3.ssl.enabled=false
+
+  iceberg: |
+    connector.name=iceberg
+    hive.metastore.uri=thrift://my-hive-metastore:9083
+    s3.endpoint=http://10.152.183.128
+    s3.path-style-access=true
+    s3.aws-access-key=licizle6KWXBi44k1FNT
+    s3.aws-secret-key=qn8CljmFNMkL8pxYwYB1ytxHUb66jH9eqDuXVMe2
+    fs.native-s3.enabled=true
+    # warehouse=s3a://curated/iceberg/db
+    # s3.ssl.enabled=false
 
 secretMounts:
   - name: redis-table-schema-volumn
@@ -307,6 +329,36 @@ EOF
     echo "Dremio UI URL: http://$dremio_ui_url"
 }
 
+configure_spark_settings() {
+
+    export AWS_ACCESS_KEY=$(kubectl get secret -n minio-operator microk8s-user-1 -o jsonpath='{.data.CONSOLE_ACCESS_KEY}' | base64 -d)
+    export AWS_SECRET_KEY=$(kubectl get secret -n minio-operator microk8s-user-1 -o jsonpath='{.data.CONSOLE_SECRET_KEY}' | base64 -d)
+    export AWS_S3_ENDPOINT=$(kubectl get service minio -n minio-operator -o jsonpath='{.spec.clusterIP}')
+
+    spark-client.service-account-registry add-config \
+        --username spark --namespace spark \
+        --conf spark.eventLog.enabled=true \
+        --conf spark.eventLog.dir=s3a://logs/spark-events/ \
+        --conf spark.history.fs.logDirectory=s3a://logs/spark-events/ \
+        --conf spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider \
+        --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false \
+        --conf spark.hadoop.fs.s3a.path.style.access=true \
+        --conf spark.hadoop.fs.s3a.access.key="$AWS_ACCESS_KEY" \
+        --conf spark.hadoop.fs.s3a.endpoint="$AWS_S3_ENDPOINT" \
+        --conf spark.hadoop.fs.s3a.secret.key="$AWS_SECRET_KEY" \
+        --conf spark.kubernetes.namespace=spark \
+        --conf spark.sql.catalogImplementation=hive \
+        --conf spark.hadoop.hive.metastore.uris=thrift://$HIVE_METASTORE_URL \
+        --conf spark.sql.warehouse.dir=s3a://warehouse
+
+    spark-client.service-account-registry get-config \
+            --username spark --namespace spark
+
+    spark-client.service-account-registry get-config \
+        --username spark --namespace spark > properties.conf
+}
+
+
 # Main execution
 main() {
     install_microk8s
@@ -315,8 +367,12 @@ main() {
     configure_spark
     deploy_minio_microk8s
     create_s3_buckets
+    deploy_postgresql
+    deploy_hive_metastore
+    deploy_redis
     deploy_trino
     deploy_dremio
+    configure_spark_settings
     }
 
 main "$@"
