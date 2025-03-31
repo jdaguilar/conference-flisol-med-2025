@@ -128,7 +128,7 @@ deploy_minio_microk8s() {
 }
 
 create_s3_buckets() {
-    local buckets=("raw" "curated" "analytics" "artifacts" "logs" "dremio")
+    local buckets=("raw" "curated" "analytics" "artifacts" "logs" "dremio" "metastore")
 
     for bucket in "${buckets[@]}"; do
 
@@ -168,7 +168,8 @@ conf:
     javax.jdo.option.ConnectionUserName: admin
     javax.jdo.option.ConnectionPassword: admin
 
-    fs.defaultFS: s3a://$AWS_S3_ENDPOINT
+    fs.defaultFS: s3a://metastore
+    fs.s3a.bucket: metastore
     fs.s3a.connection.ssl.enabled: false
     fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
     fs.s3a.endpoint: http://$AWS_S3_ENDPOINT
