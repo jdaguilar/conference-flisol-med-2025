@@ -70,6 +70,10 @@ install_additional_tools() {
 
     print_info "Installing Snap Spark Client..."
     sudo snap install spark-client --channel 3.4/edge || print_error "Failed to install Spark Client"
+
+    # Adding Helm repos and ignoring errors if the repo already exists
+    sudo microk8s helm repo add bitnami https://charts.bitnami.com/bitnami || true
+    sudo microk8s helm repo add trino https://trinodb.github.io/charts/ || true
 }
 
 configure_spark() {
@@ -144,6 +148,9 @@ create_s3_buckets() {
 }
 
 deploy_postgresql() {
+    print_info "Creating namespace 'trino'..."
+    kubectl get namespace | grep -q "^trino " || kubectl create namespace trino
+
     print_info "Deploy PostgreSQL for Hive Metastore..."
     cat <<EOF > k8s/hive-metastore-postgresql/values.yaml
 global:
@@ -243,7 +250,12 @@ EOF
 }
 
 deploy_dremio() {
+
+    print_info "Creating namespace 'dremio'..."
+    kubectl get namespace | grep -q "^dremio " || kubectl create namespace dremio
+
     print_info "Deploy Dremio..."
+
     cat <<EOF > k8s/dremio/values.yaml
 coordinator:
   cpu: 2
