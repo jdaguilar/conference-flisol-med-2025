@@ -152,6 +152,7 @@ deploy_postgresql() {
     kubectl get namespace | grep -q "^trino " || kubectl create namespace trino
 
     print_info "Deploy PostgreSQL for Hive Metastore..."
+    mkdir -p k8s/hive-metastore-postgresql
     cat <<EOF > k8s/hive-metastore-postgresql/values.yaml
 global:
   postgresql:
@@ -166,6 +167,7 @@ EOF
 
 deploy_hive_metastore() {
     print_info "Deploy Hive Metastore..."
+    mkdir -p k8s/hive-metastore
     cat <<EOF > k8s/hive-metastore/values.yaml
 conf:
   hiveSite:
@@ -205,12 +207,19 @@ EOF
 
 deploy_redis() {
     print_info "Deploy Redis..."
+    cat <<EOF > k8s/redis/values.yaml
+global:
+  redis:
+    password: trino_demo_password
+EOF
+
     kubectl create secret generic redis-table-definition --from-file=k8s/redis/test.json -n trino || true
     sudo microk8s helm upgrade --install my-redis bitnami/redis -n trino -f k8s/redis/values.yaml
 }
 
 deploy_trino() {
     print_info "Deploy Trino..."
+    mkdir -p k8s/trino
     cat <<EOF > k8s/trino/values.yaml
 image:
   tag: 372
@@ -255,7 +264,7 @@ deploy_dremio() {
     kubectl get namespace | grep -q "^dremio " || kubectl create namespace dremio
 
     print_info "Deploy Dremio..."
-
+    mkdir -p k8s/dremio
     cat <<EOF > k8s/dremio/values.yaml
 coordinator:
   cpu: 2
