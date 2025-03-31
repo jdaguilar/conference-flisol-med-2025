@@ -172,3 +172,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+
+properties.conf
+
+data
+
+k8s/*/values.yaml
