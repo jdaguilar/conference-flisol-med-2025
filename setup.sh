@@ -72,8 +72,9 @@ install_additional_tools() {
     sudo snap install spark-client --channel 3.4/edge || print_error "Failed to install Spark Client"
 
     # Adding Helm repos and ignoring errors if the repo already exists
+    print_info "Adding Helm repositories..."
     sudo microk8s helm repo add bitnami https://charts.bitnami.com/bitnami || true
-    sudo microk8s helm repo add trino https://trinodb.github.io/charts/ || true
+    sudo microk8s helm repo add trino https://trinodb.github.io/charts || true
 }
 
 configure_spark() {
@@ -213,7 +214,11 @@ global:
     password: trino_demo_password
 EOF
 
-    kubectl create secret generic redis-table-definition --from-file=k8s/redis/test.json -n trino || true
+    if ! kubectl get secret redis-table-definition -n trino &>/dev/null; then
+        kubectl create secret generic redis-table-definition --from-file=k8s/redis/test.json -n trino
+    else
+        print_info "Secret 'redis-table-definition' already exists. Skipping creation."
+    fi
     sudo microk8s helm upgrade --install my-redis bitnami/redis -n trino -f k8s/redis/values.yaml
 }
 
@@ -221,12 +226,20 @@ deploy_trino() {
     print_info "Deploy Trino..."
     mkdir -p k8s/trino
     cat <<EOF > k8s/trino/values.yaml
+
 image:
-  tag: 372
+  repository: trinodb/trino
+  tag: 474
 
 catalogs:
-  minio: |
-    connector.name=hive-hadoop2
+  tpch: |-
+    connector.name=tpch
+    tpch.splits-per-node=4
+  tpcds: |-
+    connector.name=tpcds
+    tpcds.splits-per-node=4
+  minio: |-
+    connector.name=hive
     hive.metastore.uri=thrift://my-hive-metastore:9083
     hive.s3.path-style-access=true
     hive.s3.endpoint=http://$AWS_S3_ENDPOINT
@@ -237,8 +250,7 @@ catalogs:
     hive.storage-format=ORC
     hive.allow-drop-table=true
     hive.s3.ssl.enabled=false
-
-  iceberg: |
+  lakehouse: |-
     connector.name=iceberg
     hive.metastore.uri=thrift://my-hive-metastore:9083
     s3.endpoint=http://10.152.183.128
@@ -250,12 +262,18 @@ catalogs:
     # s3.ssl.enabled=false
 
 secretMounts:
-  - name: redis-table-schema-volumn
+  - name: redis-table-schema-volume
     path: /etc/redis
     secretName: redis-table-definition
 
 EOF
     sudo microk8s helm upgrade --install my-trino trino/trino --version 0.7.0 --namespace trino -f k8s/trino/values.yaml
+
+    # Get trino service IP and port
+    trino_ip=$(kubectl get service my-trino -n trino -o jsonpath='{.spec.clusterIP}')
+    trino_port=$(kubectl get service my-trino -n trino -o jsonpath='{.spec.ports[0].port}')
+    trino_ui_url=$trino_ip:$trino_port
+    echo "Trino UI URL: http://$trino_ui_url"
 }
 
 deploy_dremio() {
