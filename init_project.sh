@@ -39,25 +39,8 @@ configure_spark_settings() {
         --username spark --namespace spark > properties.conf
 }
 
-create_s3_buckets() {
-    local buckets=("raw" "curated" "analytics" "artifacts" "logs")
-
-    for bucket in "${buckets[@]}"; do
-
-        if echo $(aws s3 ls "s3://$bucket" --profile $MINIO_PROFILE_NAME 2>&1) | grep -q 'NoSuchBucket'; then
-            aws s3 mb "s3://$bucket" --profile $MINIO_PROFILE_NAME
-        else
-            echo "Bucket s3://$bucket already exists. Skipping creation."
-        fi
-    done
-
-    # Special case for logs
-    aws s3api put-object --bucket=logs --key=spark-events/ --profile=$MINIO_PROFILE_NAME
-}
-
 # Main execution
 main() {
-    create_s3_buckets
     configure_spark_settings
 
     print_info "Setup complete."
