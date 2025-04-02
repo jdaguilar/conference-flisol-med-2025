@@ -72,8 +72,8 @@ install_additional_tools() {
     sudo snap install spark-client --channel 3.4/edge || print_error "Failed to install Spark Client"
 
     # Adding Helm repos and ignoring errors if the repo already exists
-    sudo microk8s helm repo add bitnami https://charts.bitnami.com/bitnami || true
-    sudo microk8s helm repo add trino https://trinodb.github.io/charts/ || true
+    sudo microk8s helm repo add nessie-helm https://charts.projectnessie.org || true
+    helm repo update
 }
 
 configure_spark() {
@@ -145,108 +145,6 @@ create_s3_buckets() {
 
     # Special case for logs
     aws s3api put-object --bucket=logs --key=spark-events/ --profile=$MINIO_PROFILE_NAME
-}
-
-deploy_postgresql() {
-    print_info "Creating namespace 'trino'..."
-    kubectl get namespace | grep -q "^trino " || kubectl create namespace trino
-
-    print_info "Deploy PostgreSQL for Hive Metastore..."
-    cat <<EOF > k8s/hive-metastore-postgresql/values.yaml
-global:
-  postgresql:
-    auth:
-      postgresPassword: admin
-      database: metastore_db
-      username: admin
-      password: admin
-EOF
-    sudo microk8s helm upgrade --install hive-metastore-postgresql bitnami/postgresql -n trino -f k8s/hive-metastore-postgresql/values.yaml
-}
-
-deploy_hive_metastore() {
-    print_info "Deploy Hive Metastore..."
-    cat <<EOF > k8s/hive-metastore/values.yaml
-conf:
-  hiveSite:
-    hive.metastore.uris: thrift://my-hive-metastore:9083
-    javax.jdo.option.ConnectionDriverName: org.postgresql.Driver
-    javax.jdo.option.ConnectionURL: jdbc:postgresql://hive-metastore-postgresql:5432/metastore_db
-    javax.jdo.option.ConnectionUserName: admin
-    javax.jdo.option.ConnectionPassword: admin
-
-    fs.defaultFS: s3a://warehouse
-    hive.metastore.warehouse.dir: s3a://warehouse
-    # metastore.warehouse.dir: s3a://warehouse
-    fs.s3a.connection.ssl.enabled: false
-    fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
-    fs.s3a.endpoint: http://$AWS_S3_ENDPOINT
-    fs.s3a.access.key: $AWS_ACCESS_KEY
-    fs.s3a.secret.key: $AWS_SECRET_KEY
-    fs.s3a.path.style.access: true
-
-hiveMetastoreDb:
-  host: hive-metastore-postgresql
-  port: 5432
-
-EOF
-    sudo microk8s helm upgrade --install my-hive-metastore -n trino -f k8s/hive-metastore/values.yaml k8s/charts/hive-metastore
-    # Wait for the Hive Metastore service to be ready
-    while ! kubectl get service my-hive-metastore -n trino &>/dev/null; do
-        print_info "Waiting for Hive Metastore service to be ready..."
-        sleep 10
-    done
-    # Get the IP address of the Hive Metastore service
-    hive_metastore_ip=$(kubectl get service my-hive-metastore -n trino -o jsonpath='{.spec.clusterIP}')
-    hive_metastore_port=$(kubectl get service my-hive-metastore -n trino -o jsonpath='{.spec.ports[0].port}')
-    export HIVE_METASTORE_URL="$hive_metastore_ip:$hive_metastore_port"
-    echo "Hive Metastore URL: $HIVE_METASTORE_URL"
-}
-
-deploy_redis() {
-    print_info "Deploy Redis..."
-    kubectl create secret generic redis-table-definition --from-file=k8s/redis/test.json -n trino || true
-    sudo microk8s helm upgrade --install my-redis bitnami/redis -n trino -f k8s/redis/values.yaml
-}
-
-deploy_trino() {
-    print_info "Deploy Trino..."
-    cat <<EOF > k8s/trino/values.yaml
-image:
-  tag: 372
-
-catalogs:
-  minio: |
-    connector.name=hive-hadoop2
-    hive.metastore.uri=thrift://my-hive-metastore:9083
-    hive.s3.path-style-access=true
-    hive.s3.endpoint=http://$AWS_S3_ENDPOINT
-    hive.s3.aws-access-key=$AWS_ACCESS_KEY
-    hive.s3.aws-secret-key=$AWS_SECRET_KEY
-    hive.non-managed-table-writes-enabled=true
-    hive.s3select-pushdown.enabled=true
-    hive.storage-format=ORC
-    hive.allow-drop-table=true
-    hive.s3.ssl.enabled=false
-
-  iceberg: |
-    connector.name=iceberg
-    hive.metastore.uri=thrift://my-hive-metastore:9083
-    s3.endpoint=http://10.152.183.128
-    s3.path-style-access=true
-    s3.aws-access-key=licizle6KWXBi44k1FNT
-    s3.aws-secret-key=qn8CljmFNMkL8pxYwYB1ytxHUb66jH9eqDuXVMe2
-    fs.native-s3.enabled=true
-    # warehouse=s3a://curated/iceberg/db
-    # s3.ssl.enabled=false
-
-secretMounts:
-  - name: redis-table-schema-volumn
-    path: /etc/redis
-    secretName: redis-table-definition
-
-EOF
-    sudo microk8s helm upgrade --install my-trino trino/trino --version 0.7.0 --namespace trino -f k8s/trino/values.yaml
 }
 
 deploy_dremio() {
@@ -341,6 +239,14 @@ EOF
     echo "Dremio UI URL: http://$dremio_ui_url"
 }
 
+deploy nessie () {
+    print_info "Creating namespace 'nessie'..."
+    kubectl get namespace | grep -q "^nessie " || kubectl create namespace nessie
+
+    print_info "Deploy Nessie..."
+    sudo microk8s helm install -n nessie-ns nessie nessie-helm/nessie --create-namespace
+}
+
 configure_spark_settings() {
 
     export AWS_ACCESS_KEY=$(kubectl get secret -n minio-operator microk8s-user-1 -o jsonpath='{.data.CONSOLE_ACCESS_KEY}' | base64 -d)
@@ -379,11 +285,8 @@ main() {
     configure_spark
     deploy_minio_microk8s
     create_s3_buckets
-    deploy_postgresql
-    deploy_hive_metastore
-    deploy_redis
-    deploy_trino
     deploy_dremio
+    deploy_nessie
     configure_spark_settings
     }
 
