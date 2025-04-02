@@ -73,7 +73,7 @@ install_additional_tools() {
 
     # Adding Helm repos and ignoring errors if the repo already exists
     sudo microk8s helm repo add nessie-helm https://charts.projectnessie.org || true
-    helm repo update
+    sudo microk8s helm  repo update
 }
 
 configure_spark() {
@@ -244,7 +244,7 @@ deploy_nessie() {
     kubectl get namespace | grep -q "^nessie " || kubectl create namespace nessie
 
     print_info "Deploy Nessie..."
-    sudo microk8s helm install -n nessie-ns nessie nessie-helm/nessie --create-namespace
+    sudo microk8s helm upgrade --install -n nessie-ns nessie nessie-helm/nessie --create-namespace
 }
 
 configure_spark_settings() {
