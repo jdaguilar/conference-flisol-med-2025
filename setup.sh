@@ -153,7 +153,7 @@ deploy_dremio() {
     kubectl get namespace | grep -q "^dremio " || kubectl create namespace dremio
 
     print_info "Deploy Dremio..."
-
+    mkdir -p k8s/dremio
     cat <<EOF > k8s/dremio/values.yaml
 coordinator:
   cpu: 2
