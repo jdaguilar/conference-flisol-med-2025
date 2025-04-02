@@ -264,10 +264,7 @@ configure_spark_settings() {
         --conf spark.hadoop.fs.s3a.access.key="$AWS_ACCESS_KEY" \
         --conf spark.hadoop.fs.s3a.endpoint="$AWS_S3_ENDPOINT" \
         --conf spark.hadoop.fs.s3a.secret.key="$AWS_SECRET_KEY" \
-        --conf spark.kubernetes.namespace=spark \
-        --conf spark.sql.catalogImplementation=hive \
-        --conf spark.hadoop.hive.metastore.uris=thrift://$HIVE_METASTORE_URL \
-        --conf spark.sql.warehouse.dir=s3a://warehouse
+        --conf spark.kubernetes.namespace=spark
 
     spark-client.service-account-registry get-config \
             --username spark --namespace spark
