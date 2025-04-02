@@ -239,7 +239,7 @@ EOF
     echo "Dremio UI URL: http://$dremio_ui_url"
 }
 
-deploy nessie () {
+deploy_nessie() {
     print_info "Creating namespace 'nessie'..."
     kubectl get namespace | grep -q "^nessie " || kubectl create namespace nessie
 
