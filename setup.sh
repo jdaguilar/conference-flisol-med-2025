@@ -249,10 +249,6 @@ deploy_nessie() {
 
 configure_spark_settings() {
 
-    export AWS_ACCESS_KEY=$(kubectl get secret -n minio-operator microk8s-user-1 -o jsonpath='{.data.CONSOLE_ACCESS_KEY}' | base64 -d)
-    export AWS_SECRET_KEY=$(kubectl get secret -n minio-operator microk8s-user-1 -o jsonpath='{.data.CONSOLE_SECRET_KEY}' | base64 -d)
-    export AWS_S3_ENDPOINT=$(kubectl get service minio -n minio-operator -o jsonpath='{.spec.clusterIP}')
-
     spark-client.service-account-registry add-config \
         --username spark --namespace spark \
         --conf spark.eventLog.enabled=true \
