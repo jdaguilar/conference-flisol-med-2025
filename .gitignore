@@ -179,7 +179,4 @@ properties.conf
 data
 
 
-k8s/trino/values.yaml
-k8s/redis/values.yaml
-k8s/hive-metastore/values.yaml
-k8s/hive-metastore-postgresql/values.yaml
+k8s/dremio/values.yaml
