@@ -152,7 +152,7 @@ spark-client.spark-submit \
     --username spark --namespace spark \
     --deploy-mode cluster \
     s3a://artifacts/python/process_gh_archive_data_iceberg.py \
-    --source_files_pattern=s3a://raw/gh_archive/year=2025/month=01/day=02
+    --source_files_pattern=s3a://raw/gh_archive/year=2025/month=01/day=01
 ```
 
 # Referencias:
