@@ -240,11 +240,18 @@ EOF
 }
 
 deploy_nessie() {
-    print_info "Creating namespace 'nessie'..."
-    kubectl get namespace | grep -q "^nessie " || kubectl create namespace nessie
+    print_info "Creating namespace 'nessie-ns'..."
+    kubectl get namespace | grep -q "^nessie-ns " || kubectl create namespace nessie-ns
 
     print_info "Deploy Nessie..."
     sudo microk8s helm upgrade --install -n nessie-ns nessie nessie-helm/nessie --create-namespace
+
+    # get URL for Nessie
+    nessie_ui_ip=$(kubectl get service nessie -n nessie-ns -o jsonpath='{.spec.clusterIP}')
+    nessie_ui_port=$(kubectl get service nessie -n nessie-ns -o jsonpath='{.spec.ports[0].port}')
+    nessie_ui_url=$nessie_ui_ip:$nessie_ui_port
+    echo "Nessie UI URL: http://$nessie_ui_url"
+    echo "Nessie API URL: http://$nessie_ui_url/api/v2"
 }
 
 configure_spark_settings() {
