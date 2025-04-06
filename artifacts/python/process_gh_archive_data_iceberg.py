@@ -7,8 +7,6 @@ import pyspark.sql.functions as F
 import pyspark.sql.types as T
 
 
-JAR_PACKAGES = ("org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.6.1",)
-
 CREATE_TABLE_QUERY = """
 CREATE TABLE IF NOT EXISTS iceberg_catalog.db.gh_archive (
     event_id STRING,
@@ -38,6 +36,8 @@ CREATE TABLE IF NOT EXISTS iceberg_catalog.db.gh_archive (
 TBLPROPERTIES ('write.spark.accept-any-schema'='true')
 PARTITIONED BY (year, month, day, hour);
 """
+
+JAR_PACKAGES = ("org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.6.1",)
 
 conf = (
     pyspark.SparkConf()
